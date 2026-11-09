@@ -1,64 +1,95 @@
-# تجربة التسعير التلقائي (OSRM)
+# Automatic Pricing Playground (OSRM)
 
-صفحة HTML/CSS/JS عادية، بدون build وبدون backend، لتجربة معادلة التسعير على مسافات طرق حقيقية من OSRM وخرائط OpenStreetMap.
+A plain HTML/CSS/JS page, with no build step and no backend, for tuning a delivery pricing formula on real road distances from OSRM and OpenStreetMap maps (Ismailia, Egypt). The UI is in Arabic.
 
-## النسخة المنشورة
+## Live version
 
-https://islam1l.github.io/pricing-playground/ (GitHub Pages من الريبو `islam1l/pricing-playground`)
+https://islam1l.github.io/pricing-playground/ (GitHub Pages, from the `islam1l/pricing-playground` repo)
 
-- بتشتغل على سيرفر الديمو `router.project-osrm.org` (استخدام غير تجاري، طلب واحد في الثانية)، وده كفاية للعرض. زرار Docker مش بيظهر غير لما الصفحة تتفتح من `localhost`.
-- أي متصفح جديد بيبدأ بالقيم الافتراضية اللي في `pricing.js` و`app.js` (`DEFAULT_SETTINGS` و`DEFAULT_POINTS`). التعديلات اللي بتعملها بتتحفظ في المتصفح ده بس.
-- للتحديث: عدّل الملفات، وبعدين `git commit` و`git push`، والموقع بيتحدث لوحده في حوالي دقيقة.
+- It uses the public OSRM demo server `router.project-osrm.org`. That server is for non-commercial use only and allows one request per second, which is enough for a demo. The "Docker محلي :5000" button only shows when the page is opened from `localhost`.
+- A new browser starts with the defaults in `pricing.js` (`PARAMS`, `DEFAULT_TIERS`) and `app.js` (`DEFAULT_SETTINGS`, `DEFAULT_POINTS`). Changes you make on the page are saved in that browser only.
+- To update the site: edit the files, then `git commit` and `git push`. Pages redeploys in about a minute.
 
-## التشغيل
+## Running locally
 
-لازم الصفحة تتفتح من http، مش `file://` (بلاطات OSM محتاجة Referer).
+The page must be served over http, not opened as `file://`, because OSM tiles need a Referer header.
 
 ```bash
 cd ~/Desktop/pricing-playground
 python3 -m http.server 8077
 ```
 
-بعدها افتح http://localhost:8077 (البورت 8000 مستخدم من Laravel)
+Then open http://localhost:8077. Port 8000 is taken by the Laravel app.
 
-## الملفات
+## Files
 
-- `pricing.js`: المعادلة. `PARAMS` بيعرّف المعاملات، والفورم بيترسم منه تلقائيًا. `calculatePrice(summary, params)` دالة pure بترجع التفصيل كله. لو عايز تضيف بند أو تشيله، عدّل الملف ده بس. سعر المسافة كده:
-  - **شريحة الوصول**: أول `approach_tier_km` كم من الوصول (من نقطة التجمع لأول محطة) بسعر `approach_price_per_km`، وده سعر أرخص.
-  - **الشرائح العادية** (`distance_tiers`): بتتطبق على كيلومترات الرحلة ومعاها أي كيلومترات وصول زيادة عن شريحة الوصول، وبتبدأ دايمًا من أول شريحة. كل شريحة بتحسب الكيلومترات اللي جواها بس، والكيلومترات المشمولة بتتخصم من أول الرحلة.
-  - آخر حد في الشرائح هو أقصى **مسافة كلية** (وصول + رحلة)، وبعده مفيش سعر (تسعير يدوي).
-  - مثال بالقيم الافتراضية: وصول 7 كم + رحلة 10 كم = 20 + 5×2.5 + (4×3.5 + 5×4 + 2×5 على 12 كم) = 76.5، وبعد التقريب 77.
-- `osrm.js`: الاتصال بـ OSRM. فيه طابور واحد بفاصل 1.1 ثانية بين الطلبات، ومهلة 15 ثانية. تحويل `lat,lng` إلى `lng,lat` بيحصل هنا بس.
-- `app.js`: الخريطة والواجهة والحالات المحفوظة (localStorage).
+- `pricing.js`: the formula. `PARAMS` defines the parameters, and the parameters form is generated from it. `calculatePrice(summary, params)` is a pure function that returns the full breakdown. To add or remove a price component, edit this file only.
+- `osrm.js`: the OSRM client. All requests go through one queue with 1.1 s between requests (skipped for a local server) and a 15 s timeout. The `lat,lng` → `lng,lat` swap happens here only.
+- `app.js`: the map, the UI and the saved test cases (localStorage).
 
-## طريقة الحساب
+## Pricing formula
 
-1. المسار: نقطة التجمع (اختيارية) ← المحطات بأي ترتيب ← نقطة التسليم (آخر نقطة دايمًا). نقطة التسليم اختيارية: من غيرها (زي حجز دكتور، أو استلام من مكان وتسليم في مكان تاني) آخر محطة مدخلة بتبقى نهاية المسار الثابتة، واللي قبلها بيترتبوا، وآخر محطة مش بتتحسب محطة إضافية.
-2. **الالتقاط على الطريق**: لكل نقطة بنطلب `nearest` (أقرب 10 طرق) ونحتفظ بكل اللي في نطاق "مسافة السماح للالتقاط" (افتراضي 30 م) من غير تكرار. لو مفيش طريق في النطاق، بناخد أقرب طريق عادي ويفضل تحذير "الدبوس بعيد عن الطريق" شغال. نتايج `nearest` بتتحفظ مؤقتًا لكل إحداثي، فسحب دبوس واحد مش بيعيد طلب الباقيين.
-3. طلب `table?annotations=distance,duration` واحد على كل الاحتمالات دي لكل النقاط (مع `hints` من `nearest` علشان يستخدم نفس الطريق بالظبط).
-4. **كل مرحلة لوحدها**: مسافة ووقت أي مرحلة = أقصر توصيلة من أي احتمال لنقطة البداية لأي احتمال لنقطة النهاية. يعني السائق ممكن يوصل المحطة من ناحية من الطريق ويمشي من الناحية التانية (يركن ويلف من أقرب فتحة). المراحل دي بتتستخدم في ترتيب المحطات (كل الترتيبات، حد أقصى 8 محطات) وفي السعر.
-5. مش بنسعّر من `route` واحد بيعدّي على كل النقاط، لأن بروفايل العربية بيمنع اللف (U-turn) عند النقاط الوسطانية، فدبوس متحرك 4 متر بعد فتحة دوران في طريق باتجاهين منفصلين كان بيزوّد كيلومترات.
-6. الخريطة بترسم كل مرحلة بطلب `route` لوحده بين الاحتمالين اللي اتختاروا (السعر بيظهر الأول، والرسم بييجي بعده). نقط الالتقاط بتظهر بخط برتقالي متقطع، ولوحة المسار بتكتب كل نقطة اتلقطت على أنهي طريق وعلى بعد كام متر، والوصول والمغادرة لوحدهم لو مختلفين.
-7. المرحلة الأولى (نقطة التجمع ← أول محطة) هي "الوصول"، والباقي هو "الرحلة". الوصول ليه شريحة بسعر لوحده، والرحلة على الشرائح العادية (التفاصيل في `pricing.js` فوق).
+The total is the sum of these components:
 
-## تحذيرات
+- **Base fee** (`base_fee`).
+- **Approach tier**: the first `approach_tier_km` km of the approach (gathering point → first stop) cost `approach_price_per_km` each, a cheaper rate.
+- **Distance tiers** (`distance_tiers`): they apply to the trip km, plus any approach km beyond the approach tier, and always start from the first tier. Each tier only charges the km that fall inside it. The free `included_km` come off the start of the trip.
+- **Extra stops**: `per_extra_stop` for each stop after the first. With no delivery point, the last stop is not counted.
 
-- مسافات الـ `table` هي مسافة **أسرع** طريق، مش أقصر طريق، وهي اللي بنسعّر عليها.
-- مفيش تسعير بالوقت. الوقت بيظهر في لوحة المسار للمعلومة بس (ومحسوب من غير زحمة).
-- سيرفر الديمو `router.project-osrm.org` للتجربة بس: استخدام غير تجاري، بحد أقصى طلب واحد في الثانية، ومن غير أي ضمان إنه يفضل شغال. في الإنتاج لازم نشغّل OSRM بتاعنا.
-- الدوكيومنتيشن الحالي: https://project-osrm.org/docs/v26.6.1/http
+The total is then raised to `min_fare` if it is lower, and rounded up to the nearest `rounding_step`.
 
-## OSRM محلي على Docker
+The last tier limit is the maximum **total distance** (approach + trip). Above it there is no automatic price: the order is shown as "خارج الحد الأقصى — تسعير يدوي" (manual pricing).
 
-متجهّز ومتشغّل على الجهاز ده: الداتا في `~/osrm` والكونتينر اسمه `osrm-egypt` على البورت 5000. السيرفر بيشتغل لوحده مع Docker، حتى بعد الريستارت (`--restart unless-stopped`).
+Time is not priced. The route panel shows durations for information only.
+
+Example with the defaults (tiers 5 / 10 / 15 / 50 km at 3.5 / 4 / 5 / 6, 1 km included, approach tier 5 km at 2.5): approach 7 km + trip 10 km.
+- Base fee: 20
+- Approach tier: 5 × 2.5
+- The 2 approach km beyond the tier join the trip, so the distance tiers cover 12 km: 4 × 3.5 + 5 × 4 + 2 × 5
+
+Total 76.5, rounded up to **77**.
+
+## How the route is computed
+
+1. **Route**: gathering point (optional) → stops → delivery point (always last).
+   - The delivery point is optional. Without it, for example a doctor booking, or a pickup at one place dropped at another, the last entered stop is the fixed end of the route.
+   - The other stops are ordered by the shortest route over all permutations (max 8 stops), unless "التسعير بالترتيب المدخل" (price in entered order) is on.
+2. **Snapping to roads**: for each point, `nearest` returns up to 10 nearby roads.
+   - Every road within the "مسافة السماح للالتقاط" (snap tolerance) radius is kept, 30 m by default, without duplicates.
+   - If no road is within the radius, the plain nearest road is used, and the "pin far from road" warning still applies.
+   - `nearest` results are cached per coordinate, so dragging one pin doesn't re-query the others.
+3. **One table**: a single `table?annotations=distance,duration` request covers all candidates of all points. It passes the `hints` returned by `nearest`, so OSRM uses exactly the same road.
+4. **Each leg on its own**: a leg's distance and duration are the shortest connection from any candidate of its start point to any candidate of its end point.
+   - So a driver can reach a stop on one side of a divided road and leave from the other side (park, then turn at the nearest opening).
+   - These legs are used both to order the stops and for the price.
+5. **Why not one `route` call?** Pricing doesn't use a single `route` call through all points, because the car profile blocks U-turns at intermediate waypoints. On a divided road, moving a pin 4 m past a U-turn opening used to add over 2 km.
+6. **Drawing the map**: each leg is drawn with its own `route` request between the chosen candidates.
+   - The price appears first and the line follows.
+   - Snap points are shown with an orange dashed line.
+   - The route panel lists which road each point snapped to and how far from the pin, with arrival and departure shown separately when they differ.
+7. **Approach and trip**: the first leg (gathering point → first stop) is the "approach" and the rest is the "trip".
+
+## Caveats
+
+- `table` distances are the distance of the **fastest** route, not the shortest, and that is what gets priced.
+- Durations assume no traffic.
+- The demo server `router.project-osrm.org` is for testing only. It's limited to non-commercial use and one request per second, with no uptime guarantee. Production needs a self-hosted OSRM.
+- Current API docs: https://project-osrm.org/docs/v26.6.1/http
+
+## Local OSRM on Docker
+
+Already set up on the development machine:
+- The data lives in `~/osrm`.
+- The container is `osrm-egypt` on port 5000.
+- It starts with Docker, including after a reboot (`--restart unless-stopped`).
 
 ```bash
-docker start osrm-egypt   # تشغيل
-docker stop osrm-egypt    # إيقاف (بيرجّع الرامات)
-docker logs osrm-egypt    # لو فيه مشكلة
+docker start osrm-egypt   # start
+docker stop osrm-egypt    # stop (frees the RAM)
+docker logs osrm-egypt    # troubleshooting
 ```
 
-### التجهيز من الأول (على Manjaro)
+### First-time setup (Manjaro)
 
 ```bash
 sudo pacman -S --needed docker
@@ -74,23 +105,23 @@ docker run -d --name osrm-egypt --restart unless-stopped -p 5000:5000 -v "$HOME/
   ghcr.io/project-osrm/osrm-backend osrm-routed --algorithm mld /data/egypt-latest.osrm
 ```
 
-علشان تحدّث الخريطة: حمّل الملف تاني، وأعد خطوات `extract` و`partition` و`customize`، وبعدين `docker restart osrm-egypt`.
+To update the map: download the file again, re-run `extract`, `partition` and `customize`, then `docker restart osrm-egypt`.
 
-### أرقام اتقاست على خريطة مصر (نوفمبر 2026)
+### Measured on the Egypt extract (November 2026)
 
-| | الوقت | أقصى رامات |
+| Step | Time | Peak RAM |
 |---|---|---|
-| `osrm-extract` | حوالي 2 دقيقة (مع تحميل البرنامج أول مرة) | 7.4 GB |
-| `osrm-partition` | 25 ثانية | 2.3 GB |
-| `osrm-customize` | 7 ثواني | 2.9 GB |
-| `osrm-routed` شغال | — | 1.8 GB |
+| `osrm-extract` | about 2 min (including the first image pull) | 7.4 GB |
+| `osrm-partition` | 25 s | 2.3 GB |
+| `osrm-customize` | 7 s | 2.9 GB |
+| `osrm-routed` running | — | 1.8–2.0 GB |
 
-- ملف الخريطة 171 MB، والفولدر كله بعد التجهيز 2.8 GB.
-- للإنتاج: التجهيز (خصوصًا `extract`) محتاج حوالي 7.5 GB رامات. ممكن نعمله على جهاز تاني ونرفع الملفات الجاهزة، والسيرفر نفسه يشغّل `osrm-routed` بس، وده محتاج حوالي 2 GB.
+- The map file is 171 MB. The folder is 2.8 GB after preparation.
+- For production, preparation (`extract` above all) needs about 7.5 GB of RAM. It can run on another machine and the prepared files can be uploaded. The server itself only runs `osrm-routed`, which needs about 2 GB.
 
-### ملاحظات
+### Notes
 
-- مع السيرفر المحلي، الصفحة مش بتستنى 1.1 ثانية بين الطلبات، فالحساب بياخد أجزاء من الثانية.
-- النتايج ممكن تفرق شوية عن سيرفر الديمو، لأن كل واحد شغال على نسخة من الخريطة متحمّلة في يوم مختلف.
-- لو عدّلت أي ملف في الصفحة ومش شايف التغيير، اعمل hard reload (`Ctrl+Shift+R`)، لأن المتصفح ممكن يفضل شغال بالنسخة القديمة.
-- لو حفظت حالات على سيرفر الديمو، اضغط "إعادة حساب المسارات" علشان تتحسب من جديد على السيرفر المحلي.
+- With a local server the page doesn't wait 1.1 s between requests, so a full calculation takes a fraction of a second.
+- Results can differ slightly from the demo server, because each one runs a map snapshot downloaded on a different day.
+- If you edit a file and don't see the change, do a hard reload (`Ctrl+Shift+R`). The browser may keep the old version cached.
+- Test cases saved against the demo server can be recomputed on the local server with "إعادة حساب المسارات" (recompute routes).
