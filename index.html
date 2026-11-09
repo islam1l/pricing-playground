@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>تجربة التسعير التلقائي</title>
+  <link rel="icon" href="data:,">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>تجربة التسعير التلقائي</h1>
+    <span class="subtitle">مسافات حقيقية من OSRM على خرائط OpenStreetMap · الإسماعيلية</span>
+    <button type="button" id="btn-export-all" class="topbar-action" title="المعاملات والإعدادات والنقاط الحالية في ملف واحد">تصدير كل القيم</button>
+  </header>
+
+  <main class="layout">
+    <aside class="panel panel-points">
+      <section class="card">
+        <h2>وضع الإضافة بالضغط على الخريطة</h2>
+        <div class="mode-buttons" id="mode-buttons">
+          <button type="button" data-mode="hub"><span class="dot dot-hub"></span>نقطة التجمع</button>
+          <button type="button" data-mode="stop"><span class="dot dot-stop"></span>إضافة محطة</button>
+          <button type="button" data-mode="delivery"><span class="dot dot-delivery"></span>نقطة التسليم</button>
+          <button type="button" data-mode="none">✋ تصفح فقط</button>
+        </div>
+        <p class="hint">في "تصفح فقط" الضغط على الخريطة مش بيضيف نقط، فتقدر تتحرك وتقرّب براحتك. كل النقاط قابلة للسحب. نقطة التجمع ونقطة التسليم الجديدة تستبدل القديمة.</p>
+      </section>
+
+      <section class="card">
+        <h2>إضافة بالإحداثيات</h2>
+        <input id="paste-input" class="ltr-input" dir="ltr" placeholder="30.5965, 32.2715" autocomplete="off">
+        <p class="hint">الصق "lat, lng" كما تنسخها من Google Maps (خط العرض أولًا).</p>
+        <div class="row-buttons">
+          <button type="button" data-paste="stop">كمحطة</button>
+          <button type="button" data-paste="delivery">كنقطة تسليم</button>
+          <button type="button" data-paste="hub">كنقطة تجمع</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>النقاط</h2>
+          <button type="button" id="btn-clear" class="btn-danger-ghost">مسح الكل</button>
+        </div>
+        <div id="points-list"></div>
+      </section>
+
+      <section class="card">
+        <h2>المسار</h2>
+        <div id="route-info"></div>
+      </section>
+    </aside>
+
+    <div class="map-wrap">
+      <div id="map" dir="ltr"></div>
+      <div id="map-status" class="map-status" hidden></div>
+    </div>
+
+    <aside class="panel panel-pricing">
+      <section class="card price-card">
+        <h2>السعر</h2>
+        <div id="price"></div>
+        <div id="validation" hidden>
+          <div class="validation-fields">
+            <input id="case-name" placeholder="اسم الحالة (اختياري)" autocomplete="off">
+            <input id="case-note" placeholder="ملاحظة (اختياري)" autocomplete="off">
+          </div>
+          <div class="row-buttons">
+            <button type="button" id="btn-correct" class="btn-ok">✓ صح</button>
+            <button type="button" id="btn-wrong" class="btn-bad">✗ غلط</button>
+          </div>
+          <div id="wrong-form" class="wrong-form" hidden>
+            <label>السعر الصحيح (ج.م)
+              <input id="case-expected" type="number" min="0" step="any" dir="ltr">
+            </label>
+            <button type="button" id="btn-save-wrong" class="btn-primary">حفظ الحالة</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>معاملات المعادلة</h2>
+          <div class="head-actions">
+            <button type="button" id="btn-params-reset" class="btn-ghost">الافتراضي</button>
+            <button type="button" id="btn-params-export" class="btn-ghost">تصدير</button>
+            <button type="button" id="btn-params-import" class="btn-ghost">استيراد</button>
+          </div>
+        </div>
+        <div id="params-form" class="params-form"></div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>حالات الاختبار</h2>
+          <div class="head-actions">
+            <button type="button" id="btn-cases-export" class="btn-ghost">تصدير</button>
+            <button type="button" id="btn-cases-import" class="btn-ghost">استيراد</button>
+          </div>
+        </div>
+        <div class="row-buttons">
+          <button type="button" id="btn-reprice-all" class="btn-primary">إعادة تسعير الكل</button>
+          <button type="button" id="btn-reroute-all">إعادة حساب المسارات</button>
+        </div>
+        <label class="inline-field">هامش المطابقة ±
+          <input id="tolerance" type="number" min="0" step="any" dir="ltr"> ج.م
+        </label>
+        <div id="cases-summary" class="cases-summary"></div>
+        <div id="cases"></div>
+      </section>
+
+      <section class="card">
+        <h2>الإعدادات</h2>
+        <label class="field">سيرفر OSRM
+          <input id="osrm-url" class="ltr-input" dir="ltr" autocomplete="off">
+        </label>
+        <div class="row-buttons">
+          <button type="button" data-osrm="demo" class="btn-ghost">سيرفر الديمو</button>
+          <button type="button" data-osrm="local" class="btn-ghost">Docker محلي :5000</button>
+        </div>
+        <label class="field">ترتيب المحطات حسب
+          <select id="criterion">
+            <option value="distance">أقصر مسافة</option>
+            <option value="duration">أقل وقت</option>
+          </select>
+        </label>
+        <label class="check-field">
+          <input id="entered-order" type="checkbox"> التسعير بالترتيب المدخل (بدون تحسين)
+        </label>
+        <label class="inline-field">مسافة السماح للالتقاط (م)
+          <input id="snap-tolerance" type="number" min="0" step="5" dir="ltr">
+        </label>
+        <p class="hint">كل الطرق اللي في النطاق ده حوالين الدبوس بتتجرب، وكل مرحلة بتاخد أقصر توصيلة بينها. السائق ممكن يوصل المحطة من ناحية ويمشي من الناحية التانية. 0 = أقرب طريق بس.</p>
+        <label class="inline-field">تحذير لو الدبوس بعيد عن الطريق أكثر من
+          <input id="snap-threshold" type="number" min="0" step="10" dir="ltr"> م
+        </label>
+      </section>
+    </aside>
+  </main>
+
+  <div id="toast" class="toast" hidden></div>
+  <input type="file" id="file-params" accept="application/json,.json" hidden>
+  <input type="file" id="file-cases" accept="application/json,.json" hidden>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
